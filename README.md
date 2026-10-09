@@ -5,7 +5,7 @@
 [![No Credentials](https://img.shields.io/badge/Security-No_Passwords_Needed-brightgreen?logo=auth0)](https://github.com/mehmetefeaytas/tiktok-smart-unfollow)
 [![Anti-Ban Protection](https://img.shields.io/badge/Anti--Ban-Human--like_Delays-blue)](https://github.com/mehmetefeaytas/tiktok-smart-unfollow)
 
-A lightweight, secure, client-side browser console script designed to **unfollow only TikTok accounts that don't follow you back** — with **Smart Mutual Friend Protection** so you never accidentally unfollow your friends or followers.
+A lightweight, secure, client-side browser console script designed to **unfollow only TikTok accounts that don't follow you back** — with **Smart Mutual Friend Protection** and **Auto Infinite Scrolling** so you never miss accounts or accidentally unfollow your friends.
 
 Runs 100% locally in your own browser console. **Zero third-party apps, zero password sharing, and zero cookie leaks.**
 
@@ -17,6 +17,7 @@ Runs 100% locally in your own browser console. **Zero third-party apps, zero pas
 | :--- | :---: | :---: |
 | **Requires TikTok Password / Login** | ⚠️ Yes (High Security Risk) | 🛡️ **Never** (Client-side only) |
 | **Protects Mutual Friends / Followers** | ❌ Often unfollows everyone | ✅ **100% Friend Protection** |
+| **Auto Infinite Scroll** | ❌ Gets stuck on first 20 items | ✅ **Detects real modal scroll container** |
 | **Anti-Bot / Rate Limit Delays** | ❌ Spams fast, causes bans | ✅ **Human randomized pacing (4.0s–6.5s)** |
 | **Open Source & Transparent** | ❌ Closed source binaries | ✅ **100% Open Source JavaScript** |
 | **Installation Required** | ⚠️ Installs unknown extensions | 🚀 **Just copy & paste in DevTools** |
@@ -39,18 +40,27 @@ Runs 100% locally in your own browser console. **Zero third-party apps, zero pas
 ```javascript
 (async () => {
   window.myFollowers = window.takipcilerim = new Set();
-  const dialog = document.querySelector('[role="dialog"]');
+  const dialog = document.querySelector('[role="dialog"]') || document.body;
+  const scrollBox = Array.from(dialog.querySelectorAll('*')).find((el) => {
+    const s = window.getComputedStyle(el);
+    return (s.overflowY === 'auto' || s.overflowY === 'scroll') && (el.scrollHeight > el.clientHeight);
+  }) || window;
+
   console.log("%c[Step 1] Scanning followers for friend protection...", "color: #25F4EE; font-weight: bold; font-size: 13px;");
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     document.querySelectorAll('a[href*="/@"]').forEach((a) => {
       const match = a.href.match(/@([a-zA-Z0-9._]+)/);
       if (match && match[1]) {
         window.myFollowers.add(match[1].toLowerCase());
       }
     });
-    if (dialog) dialog.scrollTop += 600;
-    else window.scrollBy(0, 600);
+    if (scrollBox === window) {
+      window.scrollBy(0, 800);
+    } else {
+      scrollBox.scrollTop = scrollBox.scrollHeight;
+      scrollBox.dispatchEvent(new Event('scroll', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
 
@@ -64,7 +74,7 @@ Runs 100% locally in your own browser console. **Zero third-party apps, zero pas
 
 ---
 
-### Step 2: Unfollow Non-Followers (Protected Mode)
+### Step 2: Unfollow Non-Followers (Auto-Scroll Protected Mode)
 
 1. Close the followers popup and click on **Following** to open the list of people you follow.
 2. In the same console, copy and paste this code, then press **Enter**:
@@ -78,9 +88,18 @@ Runs 100% locally in your own browser console. **Zero third-party apps, zero pas
   }
 
   window.stopTikTokUnfollow = false;
-  const TARGET_LIMIT = 30; // Max accounts to unfollow per run
+  const TARGET_LIMIT = 50; // Max accounts to unfollow per run
   let count = 0;
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function getScrollBox() {
+    const dialog = document.querySelector('[role="dialog"]') || document.body;
+    const scrollable = Array.from(dialog.querySelectorAll('*')).find((el) => {
+      const s = window.getComputedStyle(el);
+      return (s.overflowY === 'auto' || s.overflowY === 'scroll') && (el.scrollHeight > el.clientHeight);
+    });
+    return scrollable || window;
+  }
 
   const getButtons = () => Array.from(document.querySelectorAll('button')).filter((b) => {
     const text = (b.innerText || b.textContent || '').trim().toLowerCase();
@@ -88,6 +107,7 @@ Runs 100% locally in your own browser console. **Zero third-party apps, zero pas
     return isFollowing && !b.dataset.processed;
   });
 
+  const scrollBox = getScrollBox();
   console.log(`%c[Step 2 Started] Protecting ${protectedFollowers.size} mutual friends!`, "color: #25F4EE; font-weight: bold; font-size: 13px;");
   console.log("Target limit: " + TARGET_LIMIT + " accounts. Stop anytime with: window.stopTikTokUnfollow = true");
 
@@ -100,16 +120,27 @@ Runs 100% locally in your own browser console. **Zero third-party apps, zero pas
     let buttons = getButtons();
 
     if (buttons.length === 0) {
-      console.log("[TikTok] Loading more accounts, scrolling down...");
-      const dialog = document.querySelector('[role="dialog"]');
-      if (dialog) dialog.scrollTop += 700;
-      else window.scrollBy(0, 700);
-      await sleep(2500);
+      console.log("[TikTok] Loading more accounts, scrolling list...");
+      if (scrollBox === window) {
+        window.scrollBy(0, 800);
+      } else {
+        scrollBox.scrollTop = scrollBox.scrollHeight;
+        scrollBox.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }
+      await sleep(3000);
 
       buttons = getButtons();
       if (buttons.length === 0) {
-        console.log("[TikTok] Reached end of list or no more non-followers found.");
-        break;
+        if (scrollBox !== window) {
+          scrollBox.scrollTop = scrollBox.scrollHeight;
+          scrollBox.dispatchEvent(new Event('scroll', { bubbles: true }));
+        }
+        await sleep(2500);
+        buttons = getButtons();
+        if (buttons.length === 0) {
+          console.log("[TikTok] Reached end of list or no more non-followers found.");
+          break;
+        }
       }
     }
 
@@ -167,7 +198,7 @@ window.stopTikTokUnfollow = true;
 
 TikTok strictly monitors repetitive actions to prevent automated bot networks. To keep your account completely safe:
 
-* **Session Limit:** Keep `TARGET_LIMIT` between **25 and 40** accounts per session.
+* **Session Limit:** Keep `TARGET_LIMIT` between **25 and 50** accounts per session.
 * **Daily Limit:** Avoid unfollowing more than **80–120 accounts per day**.
 * **Spread it Out:** If you need to clean up hundreds of accounts, split it into 2–3 runs spaced 4–6 hours apart (e.g. morning, afternoon, evening).
 * **Do Not Shorten Delays:** The script deliberately pauses **4 to 6.5 seconds** between each action to simulate genuine human interaction.
@@ -179,8 +210,8 @@ TikTok strictly monitors repetitive actions to prevent automated bot networks. T
 ### Q: Chrome shows "Warning: Don’t paste code into the DevTools Console..."
 > **A:** This is Chrome's built-in anti-phishing protection for developers. Simply type `allow pasting` into the console and press **Enter**. Then you can paste the script freely.
 
-### Q: Does this work in languages other than English?
-> **A:** Yes! The button selector detects standard English labels (`Following`, `Unfollow`) as well as Turkish labels (`Takip ediliyor`, `Takipten çık`). Because user matching is done by `@handle`, friend protection works universally on all locales.
+### Q: Why were only 20–30 accounts initially visible?
+> **A:** TikTok lazy-loads accounts dynamically via infinite scroll. The updated script automatically detects the exact inner scrollable element (`overflow-y: auto`) inside the modal and scrolls to trigger TikTok's API to fetch the next batch automatically.
 
 ---
 

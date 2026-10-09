@@ -3,7 +3,7 @@
  * 
  * Instructions:
  * 1. Switch to your "Following" tab on TikTok profile.
- * 2. Open Developer Console (F12 or Option + Cmd + I -> Console).
+ * 2. Open Developer Console (F12 or Option + Cmd + J -> Console).
  * 3. Paste this code and press Enter.
  */
 (async () => {
@@ -14,17 +14,27 @@
   }
 
   window.stopTikTokUnfollow = false;
-  const TARGET_LIMIT = 30; // Maximum accounts to unfollow per session (Safe: 25-40)
+  const TARGET_LIMIT = 50; // Maximum accounts to unfollow per session
   let count = 0;
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Find candidate buttons that represent accounts you follow
+  // Dynamically find the real scrollable container of the modal
+  function getScrollBox() {
+    const dialog = document.querySelector('[role="dialog"]') || document.body;
+    const scrollable = Array.from(dialog.querySelectorAll('*')).find((el) => {
+      const s = window.getComputedStyle(el);
+      return (s.overflowY === 'auto' || s.overflowY === 'scroll') && (el.scrollHeight > el.clientHeight);
+    });
+    return scrollable || window;
+  }
+
   const getButtons = () => Array.from(document.querySelectorAll('button')).filter((b) => {
     const text = (b.innerText || b.textContent || '').trim().toLowerCase();
     const isFollowing = text === 'following' || text === 'takip ediliyor';
     return isFollowing && !b.dataset.processed;
   });
 
+  const scrollBox = getScrollBox();
   console.log(`%c[Step 2 Started] Protecting ${protectedFollowers.size} mutual friends!`, "color: #25F4EE; font-weight: bold; font-size: 13px;");
   console.log("Target limit: " + TARGET_LIMIT + " accounts. Stop anytime with: window.stopTikTokUnfollow = true");
 
@@ -36,17 +46,30 @@
 
     let buttons = getButtons();
 
+    // If visible buttons are exhausted, scroll the real container to load next batch
     if (buttons.length === 0) {
-      console.log("[TikTok] Loading more accounts, scrolling down...");
-      const dialog = document.querySelector('[role="dialog"]');
-      if (dialog) dialog.scrollTop += 700;
-      else window.scrollBy(0, 700);
-      await sleep(2500);
+      console.log("[TikTok] Loading more accounts, scrolling list...");
+      if (scrollBox === window) {
+        window.scrollBy(0, 800);
+      } else {
+        scrollBox.scrollTop = scrollBox.scrollHeight;
+        scrollBox.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }
+      await sleep(3000); // Allow TikTok server to fetch next page
 
       buttons = getButtons();
       if (buttons.length === 0) {
-        console.log("[TikTok] Reached end of list or no more non-followers found.");
-        break;
+        // Retry once more with a small nudge in case of slow network
+        if (scrollBox !== window) {
+          scrollBox.scrollTop = scrollBox.scrollHeight;
+          scrollBox.dispatchEvent(new Event('scroll', { bubbles: true }));
+        }
+        await sleep(2500);
+        buttons = getButtons();
+        if (buttons.length === 0) {
+          console.log("[TikTok] Reached end of list or no more non-followers found.");
+          break;
+        }
       }
     }
 
@@ -59,7 +82,7 @@
     const match = link ? link.href.match(/@([a-zA-Z0-9._]+)/) : null;
     const username = match ? match[1].toLowerCase() : "";
 
-    // 🛡️ Friend protection check
+    // 🛡️ Mutual friend protection check
     if (username && protectedFollowers.has(username)) {
       console.log(`%c[PROTECTED] @${username} follows you back. Skipped!`, "color: #00ff88; font-weight: bold;");
       continue;
